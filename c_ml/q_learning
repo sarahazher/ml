@@ -1,0 +1,201 @@
+import gymnasium as gym
+import numpy as np
+import matplotlib.pyplot as plt
+import pickle
+
+def run(episodes, is_training=True, render=False):
+
+    env = gym.make('Taxi-v3', render_mode='human' if render else None)
+
+    if(is_training):
+        q = np.zeros((env.observation_space.n, env.action_space.n)) # init a 500 x 6 array
+    else:
+        f = open('taxi.pkl', 'rb')
+        q = pickle.load(f)
+        f.close()
+
+    learning_rate_a = 0.9 # alpha or learning rate
+    discount_factor_g = 0.9 # gamma or discount rate. Near 0: more weight/reward placed on immediate state. Near 1: more on future state.
+    epsilon = 1         # 1 = 100% random actions
+    epsilon_decay_rate = 0.0001        # epsilon decay rate. 1/0.0001 = 10,000
+    rng = np.random.default_rng()   # random number generator
+
+    rewards_per_episode = np.zeros(episodes)
+
+    for i in range(episodes):
+        state = env.reset()[0]  
+        terminated = False     
+        truncated = False       # True when actions > 200
+
+        rewards = 0
+        while(not terminated and not truncated):
+            if is_training and rng.random() < epsilon:
+                action = env.action_space.sample() # actions: 0=left,1=down,2=right,3=up
+            else:
+                action = np.argmax(q[state,:])
+
+            new_state,reward,terminated,truncated,_ = env.step(action)
+
+            rewards += reward
+
+            if is_training:
+                q[state,action] = q[state,action] + learning_rate_a * (
+                    reward + discount_factor_g * np.max(q[new_state,:]) - q[state,action]
+                )
+
+            state = new_state
+
+        epsilon = max(epsilon - epsilon_decay_rate, 0)
+
+        if(epsilon==0):
+            learning_rate_a = 0.0001
+
+
+        rewards_per_episode[i] = rewards
+
+    env.close()
+
+    sum_rewards = np.zeros(episodes)
+    for t in range(episodes):
+        sum_rewards[t] = np.sum(rewards_per_episode[max(0, t-100):(t+1)])
+    plt.plot(sum_rewards)
+    plt.savefig('taxi.png')
+
+    if is_training:
+        f = open("taxi.pkl","wb")
+        pickle.dump(q, f)
+        f.close()
+
+if __name__ == '__main__':
+    run(15000)
+
+    run(10, is_training=False, render=True)
+
+This code implements Q-learning to train an agent on the "Taxi-v3" environment using the Gym library. The Taxi-v3 environment is a classic reinforcement learning task where a taxi agent needs to pick up and drop off passengers in a 5x5 grid. The goal is to use Q-learning to enable the taxi to learn the best actions to maximize the reward. Let's break down the code step-by-step.
+
+1. Imports and Function Definition
+gymnasium as gym: Imports the Gymnasium library for creating the "Taxi-v3" environment.
+numpy as np: Imports the NumPy library, used here for creating and manipulating arrays.
+matplotlib.pyplot as plt: Used to plot the cumulative rewards over episodes.
+pickle: Used to save and load the Q-table.
+python
+Copy code
+def run(episodes, is_training=True, render=False):
+This function run accepts episodes (number of episodes to run), is_training (if True, it will train the agent), and render (if True, it will render the environment).
+2. Creating the Taxi Environment
+python
+Copy code
+env = gym.make('Taxi-v3', render_mode='human' if render else None)
+Initializes the Taxi-v3 environment. If render is True, it will display the environment in a human-readable format.
+3. Initializing or Loading the Q-Table
+python
+Copy code
+if(is_training):
+    q = np.zeros((env.observation_space.n, env.action_space.n))
+else:
+    f = open('taxi.pkl', 'rb')
+    q = pickle.load(f)
+    f.close()
+If training, initializes the Q-table q as a zero array with dimensions [500 x 6] (500 possible states, 6 actions).
+If not training, loads a previously saved Q-table from a file taxi.pkl.
+4. Hyperparameters for Q-Learning
+python
+Copy code
+learning_rate_a = 0.9 
+discount_factor_g = 0.9 
+epsilon = 1         
+epsilon_decay_rate = 0.0001 
+rng = np.random.default_rng()   
+learning_rate_a: Controls how much new knowledge overrides old knowledge.
+discount_factor_g: Determines the importance of future rewards.
+epsilon: Initial exploration rate (100% at start).
+epsilon_decay_rate: Rate at which epsilon reduces to shift from exploration to exploitation.
+rng: Random number generator instance for epsilon-greedy action selection.
+5. Training Loop
+python
+Copy code
+rewards_per_episode = np.zeros(episodes)
+Initializes an array to store rewards for each episode.
+Episode Loop
+python
+Copy code
+for i in range(episodes):
+    state = env.reset()[0]
+    terminated = False
+    truncated = False
+    rewards = 0
+For each episode, state is reset, and flags terminated and truncated are set to False to indicate if the episode is still active.
+rewards stores the cumulative reward for the current episode.
+Action Selection and Q-Update
+python
+Copy code
+while(not terminated and not truncated):
+    if is_training and rng.random() < epsilon:
+        action = env.action_space.sample()
+    else:
+        action = np.argmax(q[state,:])
+Inside each step, the agent chooses an action based on the epsilon-greedy strategy:
+With probability epsilon, it takes a random action (exploration).
+Otherwise, it selects the best-known action based on the Q-table (exploitation).
+python
+Copy code
+new_state, reward, terminated, truncated, _ = env.step(action)
+rewards += reward
+Executes the chosen action and receives:
+new_state: The next state after the action.
+reward: The reward for the action.
+terminated and truncated: Flags indicating if the episode is over.
+python
+Copy code
+if is_training:
+    q[state, action] = q[state, action] + learning_rate_a * (
+        reward + discount_factor_g * np.max(q[new_state,:]) - q[state, action]
+    )
+Q-learning Update:
+
+The Q-value for the (state, action) pair is updated using the Bellman equation.
+It considers the current reward and the maximum future reward from new_state.
+state = new_state updates the state for the next step in the episode.
+
+Epsilon Decay and Learning Rate Adjustment
+python
+Copy code
+epsilon = max(epsilon - epsilon_decay_rate, 0)
+if(epsilon == 0):
+    learning_rate_a = 0.0001
+epsilon decays over time, reducing exploration as training progresses.
+When epsilon reaches 0, the learning_rate_a is significantly reduced to stabilize learning.
+Episode Reward Storage
+python
+Copy code
+rewards_per_episode[i] = rewards
+Stores the total reward for each episode in rewards_per_episode.
+6. Plotting Rewards Over Episodes
+python
+Copy code
+sum_rewards = np.zeros(episodes)
+for t in range(episodes):
+    sum_rewards[t] = np.sum(rewards_per_episode[max(0, t-100):(t+1)])
+plt.plot(sum_rewards)
+plt.savefig('taxi.png')
+Calculates a moving sum of rewards over the last 100 episodes to smooth out reward progress.
+Plots and saves the cumulative rewards as taxi.png.
+7. Saving the Q-Table
+python
+Copy code
+if is_training:
+    f = open("taxi.pkl", "wb")
+    pickle.dump(q, f)
+    f.close()
+Saves the trained Q-table to taxi.pkl if training is enabled, so it can be loaded later.
+8. Running the Code in Main Block
+python
+Copy code
+if __name__ == '__main__':
+    run(15000)
+    run(10, is_training=False, render=True)
+Runs the training phase for 15,000 episodes.
+Then, runs 10 episodes in non-training mode with render=True to visualize the agent’s performance.
+Summary of How It Works:
+Training Phase: The agent explores different actions in the Taxi environment using Q-learning to update a Q-table that represents the expected rewards for each (state, action) pair.
+Testing Phase: Once trained, the agent can be tested by loading the Q-table and seeing how it performs without further updates.
